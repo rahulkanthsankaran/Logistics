@@ -1,0 +1,52 @@
+---
+# Ansible playbook: deploy the Parcel Trail container with a persistent volume.
+# Requires: ansible-galaxy collection install community.docker
+- name: Deploy Parcel Trail courier tracking system
+  hosts: all
+  gather_facts: false
+  vars:
+    app_container_name: parcel-trail-app
+    app_image: "parcel-trail:{{ image_tag | default('latest') }}"
+    app_host_port: 5003
+    app_container_port: 5000
+    data_volume: parcel_trail_data
+    # Override these at run time: -e staff_password=... or use Ansible Vault
+    staff_username: "{{ lookup('env', 'STAFF_USERNAME') | default('staff', true) }}"
+    staff_password: "{{ lookup('env', 'STAFF_PASSWORD') | default('courier123', true) }}"
+    secret_key: "{{ lookup('env', 'SECRET_KEY') | default('change-this-secret-key', true) }}"
+
+  tasks:
+    - name: Ensure the data volume exists
+      community.docker.docker_volume:
+        name: "{{ data_volume }}"
+        state: present
+
+    - name: Run (or replace) the application container
+      community.docker.docker_container:
+        name: "{{ app_container_name }}"
+        image: "{{ app_image }}"
+        state: started
+        recreate: true
+        restart_policy: unless-stopped
+        ports:
+          - "{{ app_host_port }}:{{ app_container_port }}"
+        volumes:
+          - "{{ data_volume }}:/app/data"
+        env:
+          STAFF_USERNAME: "{{ staff_username }}"
+          STAFF_PASSWORD: "{{ staff_password }}"
+          SECRET_KEY: "{{ secret_key }}"
+      no_log: true
+
+    - name: Wait until the health endpoint answers
+      ansible.builtin.uri:
+        url: "http://localhost:{{ app_host_port }}/health"
+        return_content: true
+      register: health
+      retries: 12
+      delay: 3
+      until: health.status == 200
+
+    - name: Report result
+      ansible.builtin.debug:
+        msg: "{{ app_container_name }} is healthy. Open http://localhost:{{ app_host_port }}"

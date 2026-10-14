@@ -1,0 +1,11 @@
+.git
+.gitignore
+__pycache__
+*.pyc
+.pytest_cache
+.venv
+data/*.db
+Jenkinsfile
+courier-deploy.yml
+inventory.ini
+README.md
